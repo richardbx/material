@@ -265,6 +265,25 @@ describe('md-input-container directive', function() {
     expect(element.hasClass('md-input-has-value')).toBe(true);
   });
 
+  it('adds the md-input-has-messages class with default ng-messages element', inject(function($rootScope, $compile) {
+    var el = $compile(
+      '<md-input-container><input ng-model="foo">' +
+      '  <ng-messages></ng-messages>' +
+      '</md-input-container>'
+    )($rootScope);
+
+    expect(el.hasClass('md-input-has-messages')).toBe(true);
+  }));
+
+  it('does not add the md-input-has-messages class with no ng-messages element', inject(function($rootScope, $compile) {
+    var el = $compile(
+      '<md-input-container><input ng-model="foo">' +
+      '</md-input-container>'
+    )($rootScope);
+
+    expect(el.hasClass('md-input-has-messages')).toBe(false);
+  }));
+
   describe('Textarea auto-sizing', function() {
     var ngElement, element, ngTextarea, textarea, scope, parentElement;
 

@@ -12,7 +12,13 @@ angular.module('material.components.input', [
   .directive('textarea', inputTextareaDirective)
   .directive('mdMaxlength', mdMaxlengthDirective)
   .directive('placeholder', placeholderDirective)
-  .directive('ngMessages', ngMessagesDirective);
+  .directive('ngMessages', ngMessagesDirective)
+  .directive('ngMessage', ngMessageDirective)
+  .directive('ngMessageExp', ngMessageDirective)
+
+  .animation('.md-input-invalid', mdInputInvalidMessagesAnimation)
+  .animation('.md-input-messages-animation', ngMessagesAnimation)
+  .animation('.md-input-message-animation', ngMessageAnimation);
 
 /**
  * @ngdoc directive
@@ -59,7 +65,7 @@ function mdInputContainerDirective($mdTheming, $parse) {
     if (element.find('md-icon').length) element.addClass('md-has-icon');
   }
 
-  function ContainerCtrl($scope, $element, $attrs) {
+  function ContainerCtrl($scope, $element, $attrs, $animate) {
     var self = this;
 
     self.isErrorGetter = $attrs.mdIsError && $parse($attrs.mdIsError);
@@ -81,7 +87,11 @@ function mdInputContainerDirective($mdTheming, $parse) {
       $element.toggleClass('md-input-has-placeholder', !!hasPlaceholder);
     };
     self.setInvalid = function(isInvalid) {
-      $element.toggleClass('md-input-invalid', !!isInvalid);
+      if (isInvalid) {
+        $animate.addClass($element, 'md-input-invalid');
+      } else {
+        $animate.removeClass($element, 'md-input-invalid');
+      }
     };
     $scope.$watch(function() {
       return self.label && self.input;
@@ -490,9 +500,12 @@ function ngMessagesDirective() {
     require: '^^?mdInputContainer'
   };
 
-  function postLink(scope, element, attr, inputContainer) {
+  function postLink(scope, element, attrs, inputContainer) {
     // If we are not a child of an input container, don't do anything
     if (!inputContainer) return;
+
+    // Add our animation class
+    element.toggleClass('md-input-messages-animation', true);
 
     // Tell our parent input container we have messages so we can set the proper classes
     inputContainer.setHasMessages(true);
@@ -502,4 +515,177 @@ function ngMessagesDirective() {
       inputContainer.setHasMessages(false);
     });
   }
+}
+
+function ngMessageDirective($mdUtil) {
+  return {
+    restrict: 'EA',
+    compile: compile,
+    priority: 100
+  };
+
+  function compile(element) {
+    var inputContainer = $mdUtil.getClosest(element, "md-input-container");
+
+    // If we are not a child of an input container, don't do anything
+    if (!inputContainer) return;
+
+    // Add our animation class
+    element.toggleClass('md-input-message-animation', true);
+
+    return {};
+  }
+}
+
+function mdInputInvalidMessagesAnimation($q, $animateCss) {
+  return {
+    addClass: function(element, className, done) {
+      console.log(' *** addClass: ', className);
+      if (className == "md-input-invalid" && shouldShowMessages(element)) {
+        showInputMessages(element, $animateCss, $q).finally(done);
+      }
+    }
+    // NOTE: We do not need the removeClass method, because the message ng-leave animation will fire
+
+    /*
+     removeClass: function(element, className, done) {
+     console.log(' *** removeClass: ', className);
+     if (className == "md-input-invalid") {
+     hideInputMessages(element, $animateCss, $q).finally(done);
+     }
+     }
+     */
+  }
+}
+
+function ngMessagesAnimation($q, $animateCss) {
+  return {
+    addClass: function(element, className, done) {
+      if (className == "ng-hide") {
+        console.log(' *** messages hide');
+        hideInputMessages(element, $animateCss, $q).finally(done);
+      } else {
+        done();
+      }
+    },
+
+    removeClass: function(element, className, done) {
+      if (className == "ng-hide" && shouldShowMessages(element)) {
+        console.log(' *** messages show');
+        showInputMessages(element, $animateCss, $q).finally(done);
+      } else {
+        done();
+      }
+    }
+  }
+}
+
+function ngMessageAnimation($animateCss) {
+  return {
+    enter: function(element, done) {
+      console.log(' ***     message enter');
+      if (shouldShowMessages(element)) {
+        return showMessage(element, $animateCss);
+      } else {
+        done();
+      }
+    },
+
+    leave: function(element) {
+      console.log(' ***     message leave');
+      return hideMessage(element, $animateCss);
+    }
+  }
+}
+
+function showInputMessages(element, $animateCss, $q) {
+  var animators = [], animator;
+  var messages = getMessagesElement(element);
+
+  angular.forEach(messages.children(), function(child) {
+    if (!child.classList.contains("md-char-counter")) {
+      animator = showMessage(angular.element(child), $animateCss);
+
+      animators.push(animator.start());
+    }
+  });
+
+  return $q.all(animators);
+}
+
+function hideInputMessages(element, $animateCss, $q) {
+  var animators = [], animator;
+  var messages = getMessagesElement(element);
+
+  angular.forEach(messages.children(), function(child) {
+    if (!child.classList.contains("md-char-counter")) {
+      animator = showMessage(angular.element(child), $animateCss);
+
+      animators.push(animator.start());
+    }
+  });
+
+  return $q.all(animators);
+}
+
+function showMessage(element, $animateCss) {
+  var height = element[0].offsetHeight;
+  var styles = window.getComputedStyle(element[0]);
+
+  return $animateCss(element, {
+    from: {"opacity": styles.opacity, "margin-top": -height + "px"},
+    to: {"opacity": 1, "margin-top": "0"},
+    duration: 0.3
+  });
+}
+
+function hideMessage(element, $animateCss) {
+  var height = element[0].offsetHeight;
+  var styles = window.getComputedStyle(element[0]);
+
+  return $animateCss(element, {
+    from: {"opacity": styles.opacity, "margin-top": 0},
+    to: {"opacity": 0, "margin-top": -height + "px"},
+    duration: 0.3
+  });
+}
+
+function shouldShowMessages(element) {
+  var input = getInputElement(element);
+
+  var shouldShow = (
+    // If we are invalid
+    input.hasClass('md-input-invalid')
+
+      // or the user tells us not to auto-hide
+    || input.hasClass('md-no-auto-hide-messages')
+
+      // or we see a known show/hide/switch directive
+    || hasVisibilityDirective(input)
+  );
+
+  console.log(' *** shouldShow: ', shouldShow);
+
+  return shouldShow;
+}
+
+function getInputElement(element) {
+  var inputContainer = element.controller('mdInputContainer');
+
+  return inputContainer.element;
+}
+
+function getMessagesElement(element) {
+  var input = getInputElement(element);
+  var selector = 'ng-messages,data-ng-messages,x-ng-messages,' +
+    '[ng-messages],[data-ng-messages],[x-ng-messages]';
+
+  console.log(' *** getting messages: ', element, input, input[0].querySelector(selector));
+
+  return angular.element(input[0].querySelector(selector));
+}
+
+function hasVisibilityDirective(input) {
+  // TODO add functionality to grab the child messages
+  return false;
 }
